@@ -24,14 +24,14 @@ class VitalPipeline:
         # 1. Evaluate pulse state
         state = evaluate_pulse(vital.pulse_rate)
         
-        # 2. Store vital in Appwrite
+        # 2. Store vital in Appwrite (camelCase keys)
         vital_record = {
-            "patient_id": str(vital.patient_id),
-            "pulse_rate": vital.pulse_rate,
+            "patientId": str(vital.patient_id),
+            "pulseRate": vital.pulse_rate,
             "status": state
         }
         if vital.timestamp:
-            vital_record["recorded_at"] = vital.timestamp.isoformat()
+            vital_record["recordedAt"] = vital.timestamp.isoformat()
             
         try:
             databases.create_document(
@@ -74,8 +74,8 @@ def get_patient_vitals_history(patient_id: str, limit: int = 100):
             database_id=DATABASE_ID,
             collection_id=VITALS_COLLECTION,
             queries=[
-                Query.equal("patient_id", patient_id),
-                Query.order_desc("recorded_at"),
+                Query.equal("patientId", patient_id),
+                Query.order_desc("recordedAt"),
                 Query.limit(limit)
             ]
         )

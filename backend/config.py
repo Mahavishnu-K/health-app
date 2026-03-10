@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from typing import Optional
 
 class Settings(BaseSettings):
     appwrite_endpoint: str
@@ -7,7 +8,9 @@ class Settings(BaseSettings):
     appwrite_database_id: str
     jwt_secret: str
     rpi_api_key: str
-    fcm_server_key: str
+
+    # Firebase — path to service account JSON file
+    firebase_credentials_path: Optional[str] = None
 
     class Config:
         env_file = ".env"

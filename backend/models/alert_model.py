@@ -1,13 +1,15 @@
 from pydantic import BaseModel
+from typing import Optional
 from datetime import datetime
-from uuid import UUID
 
 class AlertCreate(BaseModel):
-    patient_id: UUID
-    pulse_rate: int
+    patient_id: str
+    pulse_rate: Optional[int] = None
     severity: str
     message: str
+    is_read: Optional[bool] = None
 
 class AlertDB(AlertCreate):
-    id: UUID
-    created_at: datetime
+    id: str
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None

@@ -3,6 +3,8 @@ from api.vitals import router as vitals_router
 from api.patients import router as patients_router
 from api.alerts import router as alerts_router
 from api.auth import router as auth_router
+from api.devices import router as devices_router
+from services.notification_service import _firebase_ready
 from utils.logger import logger
 
 app = FastAPI(
@@ -16,6 +18,7 @@ app.include_router(vitals_router)
 app.include_router(patients_router)
 app.include_router(alerts_router)
 app.include_router(auth_router)
+app.include_router(devices_router)
 
 @app.get("/health", tags=["Health"])
 def health_check():
@@ -23,7 +26,7 @@ def health_check():
     return {
         "server": "ok",
         "database": "ok",
-        "notification_service": "ok"
+        "notification_service": "ok" if _firebase_ready else "not_configured"
     }
 
 @app.on_event("startup")

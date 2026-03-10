@@ -1,33 +1,184 @@
 import firebase_admin
 from firebase_admin import credentials, messaging
+from db.appwrite_client import databases, DATABASE_ID
+from appwrite.query import Query
 from config import settings
 from utils.logger import logger
 
+DEVICES_COLLECTION = "devices"
+
+# ── Firebase Initialization ──────────────────────────────────────────────────
+
+_firebase_initialized = False
+
 def init_firebase():
-    """Initializes Firebase Admin SDK."""
+    """Initialize Firebase Admin SDK with service account credentials."""
+    global _firebase_initialized
+    if _firebase_initialized:
+        return True
+
     try:
         if not firebase_admin._apps:
-            # We assume fcm_server_key is the path to the service account JSON for now
-            # In a real scenario, this would configure `cred`.
-            pass 
+            if settings.firebase_credentials_path:
+                cred = credentials.Certificate(settings.firebase_credentials_path)
+                firebase_admin.initialize_app(cred)
+                _firebase_initialized = True
+                logger.info("Firebase Admin SDK initialized successfully.")
+                return True
+            else:
+                logger.warning(
+                    "FIREBASE_CREDENTIALS_PATH not set. "
+                    "Push notifications will be logged but not delivered."
+                )
+                return False
+        else:
+            _firebase_initialized = True
+            return True
     except Exception as e:
-        logger.error(f"Failed to initialize Firebase: {e}")
+        logger.error(f"Failed to initialize Firebase Admin SDK: {e}")
+        return False
 
-init_firebase()
+# Initialize on module load
+_firebase_ready = init_firebase()
+
+
+# ── Device Token Management ──────────────────────────────────────────────────
+
+def get_device_tokens_for_patient(patient_id: str) -> list[str]:
+    """
+    Look up all FCM device tokens associated with a patient.
+    Flow: patient → familyUserId → devices collection → fcmToken(s)
+    """
+    try:
+        # 1. Get the patient to find their familyUserId
+        patient = databases.get_document(
+            database_id=DATABASE_ID,
+            collection_id="patients",
+            document_id=patient_id
+        )
+        family_user_id = patient.get("familyUserId")
+        if not family_user_id:
+            logger.warning(f"Patient {patient_id} has no familyUserId, cannot send push.")
+            return []
+
+        # 2. Find all registered devices for this user
+        result = databases.list_documents(
+            database_id=DATABASE_ID,
+            collection_id=DEVICES_COLLECTION,
+            queries=[
+                Query.equal("userId", family_user_id),
+                Query.equal("isActive", True)
+            ]
+        )
+        tokens = [doc["fcmToken"] for doc in result["documents"] if doc.get("fcmToken")]
+        logger.info(f"Found {len(tokens)} device(s) for patient {patient_id} (user {family_user_id})")
+        return tokens
+
+    except Exception as e:
+        logger.error(f"Failed to look up device tokens for patient {patient_id}: {e}")
+        return []
+
+
+# ── Push Notification Sending ────────────────────────────────────────────────
 
 async def send_push_notification(patient_id: str, title: str, body: str):
     """
-    Sends a push notification to FCM.
-    This function should be called as a FastAPI BackgroundTask so it doesn't block API responses.
+    Send FCM push notification to all devices registered for this patient's family user.
+    Called as a FastAPI BackgroundTask so it never blocks the API response.
     """
+    logger.info(f"Preparing push notification for patient {patient_id}: {title}")
+
+    if not _firebase_ready:
+        logger.warning(
+            f"Firebase not initialized — logging alert instead. "
+            f"Patient: {patient_id} | {title}: {body}"
+        )
+        return
+
+    # Get all device tokens for this patient
+    tokens = get_device_tokens_for_patient(patient_id)
+    if not tokens:
+        logger.warning(f"No device tokens found for patient {patient_id}. Push not sent.")
+        return
+
+    # Build the FCM message with data payload (for background handling in Flutter)
+    notification = messaging.Notification(
+        title=title,
+        body=body
+    )
+
+    # Send to each device token
+    success_count = 0
+    failure_count = 0
+
+    for token in tokens:
+        try:
+            message = messaging.Message(
+                notification=notification,
+                data={
+                    "patient_id": patient_id,
+                    "alert_type": "critical" if "CRITICAL" in title.upper() else "warning",
+                    "click_action": "FLUTTER_NOTIFICATION_CLICK"
+                },
+                token=token,
+                android=messaging.AndroidConfig(
+                    priority="high",
+                    notification=messaging.AndroidNotification(
+                        sound="default",
+                        channel_id="health_alerts",
+                        priority="max"
+                    )
+                ),
+                apns=messaging.APNSConfig(
+                    payload=messaging.APNSPayload(
+                        aps=messaging.Aps(
+                            sound="default",
+                            badge=1,
+                            content_available=True
+                        )
+                    )
+                )
+            )
+            response = messaging.send(message)
+            logger.info(f"FCM sent successfully to token ...{token[-8:]}: {response}")
+            success_count += 1
+
+        except messaging.UnregisteredError:
+            # Token is no longer valid — mark device as inactive
+            logger.warning(f"Token ...{token[-8:]} is unregistered. Deactivating device.")
+            _deactivate_device_token(token)
+            failure_count += 1
+
+        except messaging.SenderIdMismatchError:
+            logger.error(f"Sender ID mismatch for token ...{token[-8:]}. Deactivating.")
+            _deactivate_device_token(token)
+            failure_count += 1
+
+        except Exception as e:
+            logger.error(f"Failed to send FCM to token ...{token[-8:]}: {e}")
+            failure_count += 1
+
+    logger.info(
+        f"Push notification results for patient {patient_id}: "
+        f"{success_count} sent, {failure_count} failed"
+    )
+
+
+def _deactivate_device_token(token: str):
+    """Mark a device token as inactive when it becomes invalid."""
     try:
-        # Mocking notification send for robustness when credentials aren't fully configured
-        # message = messaging.Message(
-        #     notification=messaging.Notification(title=title, body=body),
-        #     topic=patient_id
-        # )
-        # response = messaging.send(message)
-        
-        logger.info(f"FCM Push Notification dispatched for patient {patient_id}. Title: {title} | Body: {body}")
+        result = databases.list_documents(
+            database_id=DATABASE_ID,
+            collection_id=DEVICES_COLLECTION,
+            queries=[Query.equal("fcmToken", token)]
+        )
+        for doc in result["documents"]:
+            databases.update_document(
+                database_id=DATABASE_ID,
+                collection_id=DEVICES_COLLECTION,
+                document_id=doc["$id"],
+                data={"isActive": False}
+            )
+        logger.info(f"Deactivated device with token ...{token[-8:]}")
     except Exception as e:
-        logger.error(f"Error sending push notification for patient {patient_id}: {e}")
+        logger.error(f"Failed to deactivate device token: {e}")

@@ -5,6 +5,9 @@ venv/
 # Environment variables
 .env
 
+# Firebase service account credentials
+*firebase-adminsdk*.json
+
 # Python cache
 __pycache__/
 *.py[cod]

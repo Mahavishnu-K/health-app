@@ -14,7 +14,7 @@ ALERTS_COLLECTION = "alerts"
 async def seed_database():
     logger.info("Starting database seeding...")
 
-    # 1. Create a mock user (manual auth with bcrypt)
+    # 1. Create a mock user with bcrypt-hashed password
     test_email = "test.patient@example.com"
     test_password = "SecurePassword123!"
 
@@ -27,16 +27,19 @@ async def seed_database():
             collection_id=USERS_COLLECTION,
             document_id=ID.unique(),
             data={
+                "username": "testpatient",
                 "email": test_email,
                 "password": hashed_password,
-                "created_at": datetime.now(timezone.utc).isoformat()
+                "firstName": "Test",
+                "lastName": "Patient",
+                "role": "patient",
+                "isActive": True
             }
         )
         user_id = result["$id"]
         logger.info(f"Created user with ID: {user_id}")
     except Exception as e:
         logger.warning(f"User creation failed (may already exist). Error: {e}")
-        # Fallback to random UUID
         user_id = str(uuid.uuid4())
         logger.info(f"Using mock UUID for user: {user_id}")
 
@@ -45,48 +48,45 @@ async def seed_database():
 
     # 2. Seed Patients
     logger.info("Seeding patients collection...")
-    patient_data = {
-        "name": "Jacob Jones",
-        "age": 45,
-        "doctor_id": doctor_id,
-        "family_user_id": user_id,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-
     try:
         databases.create_document(
             database_id=DATABASE_ID,
             collection_id=PATIENTS_COLLECTION,
             document_id=patient_id,
-            data=patient_data
+            data={
+                "name": "Jacob Jones",
+                "age": 45,
+                "doctorId": doctor_id,
+                "familyUserId": user_id,
+                "medicalCondition": "Hypertension",
+                "admissionDate": "2025-01-15T00:00:00+00:00"
+            }
         )
-        logger.info(f"Inserted patient: {patient_data['name']}")
+        logger.info("Inserted patient: Jacob Jones")
     except Exception as e:
         logger.error(f"Failed to insert patient: {e}")
 
-    # 3. Seed Vitals (past few hours)
+    # 3. Seed Vitals
     logger.info("Seeding vitals collection...")
     base_time = datetime.now(timezone.utc) - timedelta(hours=4)
-
     pulses = [72, 75, 78, 85, 92, 95, 88, 76, 70, 68]
+
     for i, pulse in enumerate(pulses):
         status = "normal"
         if pulse > 90:
             status = "warning"
-
-        vital_data = {
-            "patient_id": patient_id,
-            "pulse_rate": pulse,
-            "status": status,
-            "recorded_at": (base_time + timedelta(minutes=30 * i)).isoformat()
-        }
 
         try:
             databases.create_document(
                 database_id=DATABASE_ID,
                 collection_id=VITALS_COLLECTION,
                 document_id=ID.unique(),
-                data=vital_data
+                data={
+                    "patientId": patient_id,
+                    "pulseRate": pulse,
+                    "status": status,
+                    "recordedAt": (base_time + timedelta(minutes=30 * i)).isoformat()
+                }
             )
         except Exception as e:
             logger.error(f"Failed to insert vital record: {e}")
@@ -97,18 +97,17 @@ async def seed_database():
     logger.info("Seeding alerts collection...")
     alerts_data = [
         {
-            "patient_id": patient_id,
+            "patientId": patient_id,
             "message": "Elevated heart rate detected (95 bpm)",
             "severity": "warning",
-            "is_read": False,
-            "created_at": (base_time + timedelta(minutes=30 * 5)).isoformat()
+            "pulseRate": 95,
+            "isRead": False
         },
         {
-            "patient_id": patient_id,
+            "patientId": patient_id,
             "message": "Heart rate returning to normal",
             "severity": "info",
-            "is_read": True,
-            "created_at": (base_time + timedelta(minutes=30 * 7)).isoformat()
+            "isRead": True
         }
     ]
 

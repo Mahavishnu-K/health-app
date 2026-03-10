@@ -1,10 +1,9 @@
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
-from uuid import UUID
 
 class VitalCreate(BaseModel):
-    patient_id: UUID
+    patient_id: str
     pulse_rate: int
     device_id: str
     timestamp: Optional[datetime] = None
@@ -14,8 +13,10 @@ class VitalResponse(BaseModel):
     pulse_state: str
 
 class VitalDB(BaseModel):
-    id: UUID
-    patient_id: UUID
+    id: str
+    patient_id: str
     pulse_rate: int
     status: str
-    recorded_at: datetime
+    recorded_at: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None

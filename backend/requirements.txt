@@ -1,8 +1,8 @@
 fastapi
 uvicorn
 appwrite
-pydantic
+pydantic[email]
 pydantic-settings
-firebase-admin
 bcrypt
 PyJWT
+firebase-admin

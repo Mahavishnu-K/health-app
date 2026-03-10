@@ -13,7 +13,7 @@ USERS_COLLECTION = "users"
 
 def signup_user(user: UserSignup):
     try:
-        # Check if user already exists
+        # Check if user already exists by email
         existing = databases.list_documents(
             database_id=DATABASE_ID,
             collection_id=USERS_COLLECTION,
@@ -25,19 +25,38 @@ def signup_user(user: UserSignup):
         # Hash the password
         hashed_password = bcrypt.hashpw(user.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
+        # Build user document matching Appwrite users collection
+        user_data = {
+            "username": user.username,
+            "email": user.email,
+            "password": hashed_password,
+            "isActive": True
+        }
+
+        # Add optional fields if provided
+        if user.first_name:
+            user_data["firstName"] = user.first_name
+        if user.last_name:
+            user_data["lastName"] = user.last_name
+        if user.role:
+            user_data["role"] = user.role
+        if user.birthdate:
+            user_data["birthdate"] = user.birthdate.isoformat()
+
         # Store user document
         result = databases.create_document(
             database_id=DATABASE_ID,
             collection_id=USERS_COLLECTION,
             document_id=ID.unique(),
-            data={
-                "email": user.email,
-                "password": hashed_password,
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
+            data=user_data
         )
         logger.info(f"User registered: {user.email}")
-        return {"message": "User registered successfully", "user_id": result["$id"]}
+        return {
+            "message": "User registered successfully",
+            "user_id": result["$id"],
+            "username": result["username"],
+            "email": result["email"]
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -58,6 +77,10 @@ def login_user(user: UserLogin):
 
         user_doc = result["documents"][0]
 
+        # Check if user is active
+        if not user_doc.get("isActive", True):
+            raise HTTPException(status_code=403, detail="Account is deactivated")
+
         # Verify password
         if not bcrypt.checkpw(user.password.encode("utf-8"), user_doc["password"].encode("utf-8")):
             raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -66,12 +89,21 @@ def login_user(user: UserLogin):
         payload = {
             "user_id": user_doc["$id"],
             "email": user_doc["email"],
+            "username": user_doc["username"],
+            "role": user_doc.get("role"),
             "exp": datetime.now(timezone.utc) + timedelta(hours=24)
         }
         token = jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
 
         logger.info(f"User logged in: {user.email}")
-        return {"access_token": token, "token_type": "bearer", "user_id": user_doc["$id"]}
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "user_id": user_doc["$id"],
+            "username": user_doc["username"],
+            "email": user_doc["email"],
+            "role": user_doc.get("role")
+        }
     except HTTPException:
         raise
     except Exception as e:

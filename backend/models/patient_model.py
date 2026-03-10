@@ -4,9 +4,12 @@ from datetime import datetime
 from uuid import UUID
 
 class PatientDB(BaseModel):
-    id: UUID
+    id: str
     name: str
     age: int
-    doctor_id: UUID
-    family_user_id: UUID
-    created_at: datetime
+    doctor_id: str
+    family_user_id: str
+    medical_condition: Optional[str] = None
+    admission_date: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None

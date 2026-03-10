@@ -8,16 +8,23 @@ ALERTS_COLLECTION = "alerts"
 
 def create_alert(alert: AlertCreate):
     try:
+        alert_data = {
+            "patientId": str(alert.patient_id),
+            "severity": alert.severity,
+            "message": alert.message
+        }
+
+        # Optional fields
+        if alert.pulse_rate is not None:
+            alert_data["pulseRate"] = alert.pulse_rate
+        if alert.is_read is not None:
+            alert_data["isRead"] = alert.is_read
+
         result = databases.create_document(
             database_id=DATABASE_ID,
             collection_id=ALERTS_COLLECTION,
             document_id=ID.unique(),
-            data={
-                "patient_id": str(alert.patient_id),
-                "pulse_rate": alert.pulse_rate,
-                "severity": alert.severity,
-                "message": alert.message
-            }
+            data=alert_data
         )
         logger.info(f"Alert created for patient {alert.patient_id} with severity {alert.severity}")
         return result
@@ -31,8 +38,8 @@ def get_alerts_for_patient(patient_id: str):
             database_id=DATABASE_ID,
             collection_id=ALERTS_COLLECTION,
             queries=[
-                Query.equal("patient_id", patient_id),
-                Query.order_desc("created_at")
+                Query.equal("patientId", patient_id),
+                Query.order_desc("$createdAt")
             ]
         )
         return response["documents"]
