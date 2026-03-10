@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+appwrite
+pydantic
+pydantic-settings
+firebase-admin
+bcrypt
+PyJWT
