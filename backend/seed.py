@@ -32,7 +32,7 @@ async def seed_database():
                 "password": hashed_password,
                 "firstName": "Test",
                 "lastName": "Patient",
-                "role": "patient",
+                "role": "user",
                 "isActive": True
             }
         )

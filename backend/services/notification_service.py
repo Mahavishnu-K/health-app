@@ -19,15 +19,17 @@ def init_firebase():
 
     try:
         if not firebase_admin._apps:
-            if settings.firebase_credentials_path:
-                cred = credentials.Certificate(settings.firebase_credentials_path)
+            creds_path = settings.get_firebase_credentials_path()
+            if creds_path:
+                cred = credentials.Certificate(creds_path)
                 firebase_admin.initialize_app(cred)
                 _firebase_initialized = True
                 logger.info("Firebase Admin SDK initialized successfully.")
                 return True
             else:
                 logger.warning(
-                    "FIREBASE_CREDENTIALS_PATH not set. "
+                    "Firebase credentials not found. "
+                    "Set FIREBASE_CREDENTIALS_PATH (local) or FIREBASE_CREDENTIALS_JSON (Render). "
                     "Push notifications will be logged but not delivered."
                 )
                 return False
@@ -144,7 +146,6 @@ async def send_push_notification(patient_id: str, title: str, body: str):
             success_count += 1
 
         except messaging.UnregisteredError:
-            # Token is no longer valid — mark device as inactive
             logger.warning(f"Token ...{token[-8:]} is unregistered. Deactivating device.")
             _deactivate_device_token(token)
             failure_count += 1
